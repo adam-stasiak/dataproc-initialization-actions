@@ -32,18 +32,17 @@ function update_apt_get() {
   return 1
 }
 
-function install_ganglia() {
+function install_ganglia_dependencies() {
   # Install dependencies needed for ganglia
-  update_apt_get || err 'Unable to update apt-get'
-  apt-get install -y ganglia-monitor
-  export DEBIAN_FRONTEND=noninteractive && apt-get install -y \
-    rrdtool \
-    gmetad \
-    ganglia-webfrontend || err 'Unable to install packages'
   sed -e "/name = \"unspecified\" /s/unspecified/${master}/" -i /etc/ganglia/gmond.conf
   sed -e '/mcast_join /s/^  /  #/' -i /etc/ganglia/gmond.conf
   sed -e '/bind /s/^  /  #/' -i /etc/ganglia/gmond.conf
-  ln -sf /etc/ganglia-webfrontend/apache.conf /etc/apache2/sites-enabled/ganglia.conf
+  DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    rrdtool \
+    gmetad \
+    ganglia-webfrontend || err 'Unable to install packages'
+
+  ln -s /etc/ganglia-webfrontend/apache.conf /etc/apache2/sites-enabled/ganglia.conf
   sed -i "s/my cluster/${master}/" /etc/ganglia/gmetad.conf
   sed -e '/udp_send_channel {/a\  host = localhost' -i /etc/ganglia/gmond.conf
   service ganglia-monitor restart &&
@@ -55,9 +54,13 @@ function install_ganglia() {
 function main() {
   local role=$(/usr/share/google/get_metadata_value attributes/dataproc-role)
   local master=$(/usr/share/google/get_metadata_value attributes/dataproc-master)
+
+  update_apt_get || err 'Unable to update apt-get'
+  apt-get install -y ganglia-monitor
+
   if [[ "${role}" == 'Master' ]]; then
     # Only run on the master node
-    install_ganglia || err 'Ganglia install action failed'
+    install_ganglia_dependencies || err 'Ganglia install action failed'
   else
     sed -e "/udp_send_channel {/a\  host = ${master}" -i /etc/ganglia/gmond.conf
     sed -i '/udp_recv_channel {/,/}/d' /etc/ganglia/gmond.conf
